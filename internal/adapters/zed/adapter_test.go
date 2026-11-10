@@ -147,6 +147,7 @@ func TestWriteSettings(t *testing.T) {
 }
 
 func TestConfigDir(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "")
 	adapter := New("/home/testuser", "")
 	configDir := adapter.configDir()
 
