@@ -68,8 +68,9 @@ func main() {
 	docsService := application.NewDocsService(store)
 	profileService := application.NewProfileService(profileDir, editors)
 	aiService := application.NewAISettingsService(editors, normalizers, mcpManagers)
+	manifestService := application.NewManifestService(mcpManagers)
 
-	server := mcpserver.NewServer(settingsService, backupService, migrationService, docsService, profileService, aiService)
+	server := mcpserver.NewServer(settingsService, backupService, migrationService, docsService, profileService, aiService, manifestService)
 
 	if err := server.Run(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "server error: %v\n", err)

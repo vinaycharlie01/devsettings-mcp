@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/vinaycharlie01/devsettings-mcp/internal/application"
 	"github.com/vinaycharlie01/devsettings-mcp/internal/domain"
 )
 
@@ -86,6 +87,21 @@ func (s *Server) registerTools() {
 		Name:        "update_mcp_config",
 		Description: "Add or update MCP server configurations for an editor. Provide a list of servers with name, command, args, url, and env. Replaces the full MCP config. Editor: vscode, zed, or cursor.",
 	}, s.handleUpdateMCPConfig)
+
+	mcp.AddTool(s.server, &mcp.Tool{
+		Name:        "sync_mcp_manifest",
+		Description: "Apply a YAML manifest of MCP servers to one or all editors. Like Helm charts for MCP configs: define servers once in YAML with variables and per-editor overrides, deploy to vscode/zed/cursor. Pass manifest as YAML string. Optional editor to target one editor, or omit for all.",
+	}, s.handleSyncMCPManifest)
+
+	mcp.AddTool(s.server, &mcp.Tool{
+		Name:        "export_mcp_manifest",
+		Description: "Export an editor's MCP server config as a canonical YAML manifest. Use this to capture an existing setup, then sync it to other editors. Editor: vscode, zed, or cursor.",
+	}, s.handleExportMCPManifest)
+
+	mcp.AddTool(s.server, &mcp.Tool{
+		Name:        "init_mcp_manifest",
+		Description: "Generate a starter mcp-servers.yaml manifest template with examples of servers, variables, per-editor overrides, and disabled entries.",
+	}, s.handleInitMCPManifest)
 }
 
 type DetectEditorsInput struct{}
@@ -419,6 +435,73 @@ func (s *Server) handleUpdateMCPConfig(ctx context.Context, _ *mcp.CallToolReque
 
 	data, _ := json.MarshalIndent(result, "", "  ")
 	return textResult(string(data)), noOutput{}, nil
+}
+
+type SyncMCPManifestInput struct {
+	Manifest string `json:"manifest"`
+	Editor   string `json:"editor"`
+}
+
+func (s *Server) handleSyncMCPManifest(ctx context.Context, _ *mcp.CallToolRequest, input SyncMCPManifestInput) (*mcp.CallToolResult, noOutput, error) {
+	if s.manifest == nil {
+		return textResult("Manifest service not available"), noOutput{}, nil
+	}
+
+	m, err := s.manifest.ParseManifest([]byte(input.Manifest))
+	if err != nil {
+		return textResult(fmt.Sprintf("Error parsing manifest: %v", err)), noOutput{}, nil
+	}
+
+	if issues := s.manifest.ValidateManifest(m); len(issues) > 0 {
+		data, _ := json.MarshalIndent(map[string]any{
+			"status": "invalid",
+			"issues": issues,
+		}, "", "  ")
+		return textResult(string(data)), noOutput{}, nil
+	}
+
+	if input.Editor != "" {
+		result, err := s.manifest.SyncToEditor(ctx, m, domain.EditorID(input.Editor))
+		if err != nil {
+			return textResult(fmt.Sprintf("Error syncing to %s: %v", input.Editor, err)), noOutput{}, nil
+		}
+		data, _ := json.MarshalIndent(result, "", "  ")
+		return textResult(string(data)), noOutput{}, nil
+	}
+
+	results, err := s.manifest.SyncToAll(ctx, m)
+	if err != nil {
+		return textResult(fmt.Sprintf("Error syncing manifest: %v", err)), noOutput{}, nil
+	}
+
+	data, _ := json.MarshalIndent(map[string]any{
+		"status":  "synced",
+		"results": results,
+	}, "", "  ")
+	return textResult(string(data)), noOutput{}, nil
+}
+
+type ExportMCPManifestInput struct {
+	Editor string `json:"editor"`
+}
+
+func (s *Server) handleExportMCPManifest(ctx context.Context, _ *mcp.CallToolRequest, input ExportMCPManifestInput) (*mcp.CallToolResult, noOutput, error) {
+	if s.manifest == nil {
+		return textResult("Manifest service not available"), noOutput{}, nil
+	}
+
+	yamlData, err := s.manifest.ExportFromEditor(ctx, domain.EditorID(input.Editor))
+	if err != nil {
+		return textResult(fmt.Sprintf("Error exporting from %s: %v", input.Editor, err)), noOutput{}, nil
+	}
+
+	return textResult(string(yamlData)), noOutput{}, nil
+}
+
+type InitMCPManifestInput struct{}
+
+func (s *Server) handleInitMCPManifest(_ context.Context, _ *mcp.CallToolRequest, _ InitMCPManifestInput) (*mcp.CallToolResult, noOutput, error) {
+	return textResult(application.GenerateManifestTemplate()), noOutput{}, nil
 }
 
 func textResult(text string) *mcp.CallToolResult {

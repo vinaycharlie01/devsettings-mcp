@@ -99,7 +99,7 @@ func newTestServer(t *testing.T) *Server {
 	docs := application.NewDocsService(store)
 	profiles := application.NewProfileService(t.TempDir(), editors)
 
-	return NewServer(settings, backup, migration, docs, profiles, nil)
+	return NewServer(settings, backup, migration, docs, profiles, nil, nil)
 }
 
 func TestHandleDetectEditors(t *testing.T) {

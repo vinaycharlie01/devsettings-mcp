@@ -15,6 +15,7 @@ type Server struct {
 	docs      *application.DocsService
 	profiles  *application.ProfileService
 	ai        *application.AISettingsService
+	manifest  *application.ManifestService
 }
 
 func NewServer(
@@ -24,6 +25,7 @@ func NewServer(
 	docs *application.DocsService,
 	profiles *application.ProfileService,
 	ai *application.AISettingsService,
+	manifest *application.ManifestService,
 ) *Server {
 	s := &Server{
 		settings:  settings,
@@ -32,6 +34,7 @@ func NewServer(
 		docs:      docs,
 		profiles:  profiles,
 		ai:        ai,
+		manifest:  manifest,
 	}
 
 	s.server = mcp.NewServer(
