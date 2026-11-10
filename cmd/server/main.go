@@ -43,18 +43,22 @@ func main() {
 	normalizers := map[domain.EditorID]ports.SettingsNormalizer{
 		domain.VSCode: vscode.NewNormalizer(),
 		domain.Zed:    zed.NewNormalizer(),
+		domain.Cursor: cursor.NewNormalizer(),
 	}
 
-	// Data directory for backups and profiles
+	// Data directory for backups, profiles, and docs cache
 	dataDir := filepath.Join(homeDir, ".devsettings")
+	profileDir := filepath.Join(workspaceDir, "profiles")
 
 	// Application services
 	backupService := application.NewBackupService(dataDir, editors)
 	settingsService := application.NewSettingsService(editors, backupService)
 	migrationService := application.NewMigrationService(editors, normalizers, backupService)
+	docsService := application.NewDocsService(dataDir)
+	profileService := application.NewProfileService(profileDir, editors)
 
 	// MCP server
-	server := mcpserver.NewServer(settingsService, backupService, migrationService)
+	server := mcpserver.NewServer(settingsService, backupService, migrationService, docsService, profileService)
 
 	if err := server.Run(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "server error: %v\n", err)

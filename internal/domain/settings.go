@@ -17,9 +17,9 @@ const (
 )
 
 type Settings struct {
-	Editor EditorID    `json:"editor"`
-	Scope  SettingsScope `json:"scope"`
-	Path   string       `json:"path"`
+	Editor EditorID       `json:"editor"`
+	Scope  SettingsScope  `json:"scope"`
+	Path   string         `json:"path"`
 	Data   map[string]any `json:"data"`
 }
 

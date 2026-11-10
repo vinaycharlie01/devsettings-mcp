@@ -12,17 +12,23 @@ type Server struct {
 	settings  *application.SettingsService
 	backup    *application.BackupService
 	migration *application.MigrationService
+	docs      *application.DocsService
+	profiles  *application.ProfileService
 }
 
 func NewServer(
 	settings *application.SettingsService,
 	backup *application.BackupService,
 	migration *application.MigrationService,
+	docs *application.DocsService,
+	profiles *application.ProfileService,
 ) *Server {
 	s := &Server{
 		settings:  settings,
 		backup:    backup,
 		migration: migration,
+		docs:      docs,
+		profiles:  profiles,
 	}
 
 	s.server = mcp.NewServer(

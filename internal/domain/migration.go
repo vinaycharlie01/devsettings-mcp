@@ -3,13 +3,13 @@ package domain
 type CompatibilityStatus string
 
 const (
-	FullySupported          CompatibilityStatus = "fully_supported"
-	SupportedTransformed    CompatibilityStatus = "supported_with_transformation"
-	EquivalentExtension     CompatibilityStatus = "equivalent_extension_available"
-	PartiallySupported      CompatibilityStatus = "partially_supported"
-	Unsupported             CompatibilityStatus = "unsupported"
-	ManualIntervention      CompatibilityStatus = "requires_manual_intervention"
-	ExcludedSecurity        CompatibilityStatus = "excluded_for_security"
+	FullySupported       CompatibilityStatus = "fully_supported"
+	SupportedTransformed CompatibilityStatus = "supported_with_transformation"
+	EquivalentExtension  CompatibilityStatus = "equivalent_extension_available"
+	PartiallySupported   CompatibilityStatus = "partially_supported"
+	Unsupported          CompatibilityStatus = "unsupported"
+	ManualIntervention   CompatibilityStatus = "requires_manual_intervention"
+	ExcludedSecurity     CompatibilityStatus = "excluded_for_security"
 )
 
 type MigrationItem struct {

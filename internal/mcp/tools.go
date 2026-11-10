@@ -9,8 +9,6 @@ import (
 	"github.com/vinaycharlie01/devsettings-mcp/internal/domain"
 )
 
-// noOutput is used as the second (structured output) return type for tool handlers
-// that only return text content.
 type noOutput = struct{}
 
 func (s *Server) registerTools() {
@@ -21,7 +19,7 @@ func (s *Server) registerTools() {
 
 	mcp.AddTool(s.server, &mcp.Tool{
 		Name:        "get_settings",
-		Description: "Read current settings for a specific editor. Returns the settings JSON and metadata including the file path.",
+		Description: "Read current settings for a specific editor. Editor: vscode, zed, or cursor. Scope: user or workspace.",
 	}, s.handleGetSettings)
 
 	mcp.AddTool(s.server, &mcp.Tool{
@@ -48,6 +46,26 @@ func (s *Server) registerTools() {
 		Name:        "execute_migration",
 		Description: "Execute a previously generated migration plan. Requires prior approval. Creates backups of both source and target before applying changes.",
 	}, s.handleExecuteMigration)
+
+	mcp.AddTool(s.server, &mcp.Tool{
+		Name:        "search_docs",
+		Description: "Search editor and language documentation for a topic. Returns matching documentation sections with URLs. Topic examples: settings, keybindings, go, python, extensions. Optional editor filter: vscode, zed, cursor.",
+	}, s.handleSearchDocs)
+
+	mcp.AddTool(s.server, &mcp.Tool{
+		Name:        "fetch_docs",
+		Description: "Retrieve a specific documentation page by URL. Optionally filter by section heading. Returns the documentation content.",
+	}, s.handleFetchDocs)
+
+	mcp.AddTool(s.server, &mcp.Tool{
+		Name:        "list_profiles",
+		Description: "List available development profiles. Profiles are pre-defined configurations for specific development workflows (e.g., Go backend, web frontend, Rust).",
+	}, s.handleListProfiles)
+
+	mcp.AddTool(s.server, &mcp.Tool{
+		Name:        "load_profile",
+		Description: "Load and apply a development profile to an editor. Merges profile settings with the editor's current configuration. Editor: vscode, zed, or cursor.",
+	}, s.handleLoadProfile)
 }
 
 type DetectEditorsInput struct{}
@@ -63,8 +81,8 @@ func (s *Server) handleDetectEditors(ctx context.Context, _ *mcp.CallToolRequest
 }
 
 type GetSettingsInput struct {
-	Editor string `json:"editor" jsonschema:"description=Editor ID (vscode, zed, cursor),enum=vscode,enum=zed,enum=cursor"`
-	Scope  string `json:"scope" jsonschema:"description=Settings scope (user or workspace),enum=user,enum=workspace"`
+	Editor string `json:"editor"`
+	Scope  string `json:"scope"`
 }
 
 func (s *Server) handleGetSettings(ctx context.Context, _ *mcp.CallToolRequest, input GetSettingsInput) (*mcp.CallToolResult, noOutput, error) {
@@ -83,10 +101,10 @@ func (s *Server) handleGetSettings(ctx context.Context, _ *mcp.CallToolRequest, 
 }
 
 type UpdateSettingsInput struct {
-	Editor   string         `json:"editor" jsonschema:"description=Editor ID (vscode, zed, cursor),enum=vscode,enum=zed,enum=cursor"`
-	Scope    string         `json:"scope" jsonschema:"description=Settings scope (user or workspace),enum=user,enum=workspace"`
-	Settings map[string]any `json:"settings" jsonschema:"description=Settings to apply (key-value pairs)"`
-	Strategy string         `json:"merge_strategy" jsonschema:"description=Merge strategy: merge (deep merge default) or replace,enum=merge,enum=replace"`
+	Editor   string         `json:"editor"`
+	Scope    string         `json:"scope"`
+	Settings map[string]any `json:"settings"`
+	Strategy string         `json:"merge_strategy"`
 }
 
 func (s *Server) handleUpdateSettings(ctx context.Context, _ *mcp.CallToolRequest, input UpdateSettingsInput) (*mcp.CallToolResult, noOutput, error) {
@@ -123,8 +141,8 @@ func (s *Server) handleUpdateSettings(ctx context.Context, _ *mcp.CallToolReques
 }
 
 type CreateBackupInput struct {
-	Editor string `json:"editor" jsonschema:"description=Editor ID (vscode, zed, cursor),enum=vscode,enum=zed,enum=cursor"`
-	Label  string `json:"label" jsonschema:"description=Optional label for the backup"`
+	Editor string `json:"editor"`
+	Label  string `json:"label"`
 }
 
 func (s *Server) handleCreateBackup(ctx context.Context, _ *mcp.CallToolRequest, input CreateBackupInput) (*mcp.CallToolResult, noOutput, error) {
@@ -138,8 +156,8 @@ func (s *Server) handleCreateBackup(ctx context.Context, _ *mcp.CallToolRequest,
 }
 
 type RestoreBackupInput struct {
-	BackupID string `json:"backup_id" jsonschema:"description=ID of the backup to restore"`
-	DryRun   bool   `json:"dry_run" jsonschema:"description=If true preview changes without applying"`
+	BackupID string `json:"backup_id"`
+	DryRun   bool   `json:"dry_run"`
 }
 
 func (s *Server) handleRestoreBackup(ctx context.Context, _ *mcp.CallToolRequest, input RestoreBackupInput) (*mcp.CallToolResult, noOutput, error) {
@@ -163,8 +181,8 @@ func (s *Server) handleRestoreBackup(ctx context.Context, _ *mcp.CallToolRequest
 }
 
 type PlanMigrationInput struct {
-	Source string `json:"source" jsonschema:"description=Source editor ID (vscode, zed, cursor),enum=vscode,enum=zed,enum=cursor"`
-	Target string `json:"target" jsonschema:"description=Target editor ID (vscode, zed, cursor),enum=vscode,enum=zed,enum=cursor"`
+	Source string `json:"source"`
+	Target string `json:"target"`
 }
 
 func (s *Server) handlePlanMigration(ctx context.Context, _ *mcp.CallToolRequest, input PlanMigrationInput) (*mcp.CallToolResult, noOutput, error) {
@@ -178,7 +196,7 @@ func (s *Server) handlePlanMigration(ctx context.Context, _ *mcp.CallToolRequest
 }
 
 type ExecuteMigrationInput struct {
-	PlanID string `json:"plan_id" jsonschema:"description=ID of the migration plan to execute"`
+	PlanID string `json:"plan_id"`
 }
 
 func (s *Server) handleExecuteMigration(ctx context.Context, _ *mcp.CallToolRequest, input ExecuteMigrationInput) (*mcp.CallToolResult, noOutput, error) {
@@ -190,6 +208,94 @@ func (s *Server) handleExecuteMigration(ctx context.Context, _ *mcp.CallToolRequ
 	result := map[string]any{
 		"plan_id": input.PlanID,
 		"status":  "completed",
+	}
+
+	data, _ := json.MarshalIndent(result, "", "  ")
+	return textResult(string(data)), noOutput{}, nil
+}
+
+type SearchDocsInput struct {
+	Topic  string `json:"topic"`
+	Editor string `json:"editor"`
+}
+
+func (s *Server) handleSearchDocs(ctx context.Context, _ *mcp.CallToolRequest, input SearchDocsInput) (*mcp.CallToolResult, noOutput, error) {
+	if s.docs == nil {
+		return textResult("Documentation service not available"), noOutput{}, nil
+	}
+
+	result, err := s.docs.Search(ctx, input.Topic, input.Editor)
+	if err != nil {
+		return textResult(fmt.Sprintf("Error searching docs: %v", err)), noOutput{}, nil
+	}
+
+	if len(result.Entries) == 0 {
+		return textResult(fmt.Sprintf("No documentation found for topic: %s", input.Topic)), noOutput{}, nil
+	}
+
+	data, _ := json.MarshalIndent(result, "", "  ")
+	return textResult(string(data)), noOutput{}, nil
+}
+
+type FetchDocsInput struct {
+	URL     string `json:"url"`
+	Section string `json:"section"`
+}
+
+func (s *Server) handleFetchDocs(ctx context.Context, _ *mcp.CallToolRequest, input FetchDocsInput) (*mcp.CallToolResult, noOutput, error) {
+	if s.docs == nil {
+		return textResult("Documentation service not available"), noOutput{}, nil
+	}
+
+	entry, err := s.docs.Fetch(ctx, input.URL, input.Section)
+	if err != nil {
+		return textResult(fmt.Sprintf("Error fetching docs: %v", err)), noOutput{}, nil
+	}
+
+	data, _ := json.MarshalIndent(entry, "", "  ")
+	return textResult(string(data)), noOutput{}, nil
+}
+
+type ListProfilesInput struct{}
+
+func (s *Server) handleListProfiles(ctx context.Context, _ *mcp.CallToolRequest, _ ListProfilesInput) (*mcp.CallToolResult, noOutput, error) {
+	if s.profiles == nil {
+		return textResult("Profile service not available"), noOutput{}, nil
+	}
+
+	profiles, err := s.profiles.ListProfiles(ctx)
+	if err != nil {
+		return textResult(fmt.Sprintf("Error listing profiles: %v", err)), noOutput{}, nil
+	}
+
+	if len(profiles) == 0 {
+		return textResult("No profiles found. Add YAML profile files to the profiles directory."), noOutput{}, nil
+	}
+
+	data, _ := json.MarshalIndent(profiles, "", "  ")
+	return textResult(string(data)), noOutput{}, nil
+}
+
+type LoadProfileInput struct {
+	Name   string `json:"name"`
+	Editor string `json:"editor"`
+}
+
+func (s *Server) handleLoadProfile(ctx context.Context, _ *mcp.CallToolRequest, input LoadProfileInput) (*mcp.CallToolResult, noOutput, error) {
+	if s.profiles == nil {
+		return textResult("Profile service not available"), noOutput{}, nil
+	}
+
+	applied, err := s.profiles.ApplyProfile(ctx, input.Name, domain.EditorID(input.Editor))
+	if err != nil {
+		return textResult(fmt.Sprintf("Error applying profile: %v", err)), noOutput{}, nil
+	}
+
+	result := map[string]any{
+		"profile":          input.Name,
+		"editor":           input.Editor,
+		"applied_settings": applied,
+		"status":           "applied",
 	}
 
 	data, _ := json.MarshalIndent(result, "", "  ")

@@ -100,9 +100,9 @@ func TestNormalizerUnsupportedKeys(t *testing.T) {
 	settings := &domain.Settings{
 		Editor: domain.VSCode,
 		Data: map[string]any{
-			"editor.formatOnSave":   true,
-			"some.custom.setting":   "value",
-			"another.unknown":       42,
+			"editor.formatOnSave": true,
+			"some.custom.setting": "value",
+			"another.unknown":     42,
 		},
 	}
 

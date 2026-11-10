@@ -14,7 +14,7 @@ import (
 )
 
 type Adapter struct {
-	homeDir     string
+	homeDir      string
 	workspaceDir string
 }
 
