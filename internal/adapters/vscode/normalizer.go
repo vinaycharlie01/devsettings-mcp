@@ -94,6 +94,41 @@ func (n *Normalizer) ToCanonical(_ context.Context, settings *domain.Settings) (
 		})
 	}
 
+	// AI settings: GitHub Copilot
+	if v, ok := settings.Data["github.copilot.enable"]; ok {
+		if b, ok := v.(bool); ok {
+			canonical.AI.InlineCompletion = b
+			items = append(items, domain.MigrationItem{
+				SourceKey: "github.copilot.enable", SourceValue: v,
+				Status: domain.SupportedTransformed,
+				Note:   "Maps to inline completion in target editor",
+			})
+		}
+	}
+
+	if v, ok := settings.Data["github.copilot.chat.enabled"]; ok {
+		if b, ok := v.(bool); ok {
+			canonical.AI.ChatEnabled = b
+			items = append(items, domain.MigrationItem{
+				SourceKey: "github.copilot.chat.enabled", SourceValue: v,
+				Status: domain.SupportedTransformed,
+				Note:   "Maps to AI chat in target editor",
+			})
+		}
+	}
+
+	if v, ok := settings.Data["github.copilot.advanced.model"]; ok {
+		if s, ok := v.(string); ok {
+			canonical.AI.Model = s
+			canonical.AI.Provider = "copilot"
+			items = append(items, domain.MigrationItem{
+				SourceKey: "github.copilot.advanced.model", SourceValue: v,
+				Status: domain.PartiallySupported,
+				Note:   "Model name may differ in target editor",
+			})
+		}
+	}
+
 	for key, val := range settings.Data {
 		if !isHandledKey(key) {
 			items = append(items, domain.MigrationItem{
@@ -131,17 +166,46 @@ func (n *Normalizer) FromCanonical(_ context.Context, canonical *domain.Canonica
 		settings["editor.lineNumbers"] = canonical.Editor.LineNumbers
 	}
 
+	// AI settings → Copilot
+	if canonical.AI.InlineCompletion {
+		settings["github.copilot.enable"] = true
+		items = append(items, domain.MigrationItem{
+			TargetKey: "github.copilot.enable", TargetValue: true,
+			Status: domain.SupportedTransformed,
+			Note:   "Inline completion mapped to GitHub Copilot",
+		})
+	}
+	if canonical.AI.ChatEnabled {
+		settings["github.copilot.chat.enabled"] = true
+		items = append(items, domain.MigrationItem{
+			TargetKey: "github.copilot.chat.enabled", TargetValue: true,
+			Status: domain.SupportedTransformed,
+			Note:   "AI chat mapped to Copilot Chat",
+		})
+	}
+	if canonical.AI.Model != "" {
+		settings["github.copilot.advanced.model"] = canonical.AI.Model
+		items = append(items, domain.MigrationItem{
+			TargetKey: "github.copilot.advanced.model", TargetValue: canonical.AI.Model,
+			Status: domain.PartiallySupported,
+			Note:   "Model name may need manual adjustment for Copilot",
+		})
+	}
+
 	return settings, items, nil
 }
 
 var handledKeys = map[string]bool{
-	"editor.formatOnSave":    true,
-	"editor.tabSize":         true,
-	"editor.fontSize":        true,
-	"editor.fontFamily":      true,
-	"editor.wordWrap":        true,
-	"editor.lineNumbers":     true,
-	"editor.minimap.enabled": true,
+	"editor.formatOnSave":           true,
+	"editor.tabSize":                true,
+	"editor.fontSize":               true,
+	"editor.fontFamily":             true,
+	"editor.wordWrap":               true,
+	"editor.lineNumbers":            true,
+	"editor.minimap.enabled":        true,
+	"github.copilot.enable":         true,
+	"github.copilot.chat.enabled":   true,
+	"github.copilot.advanced.model": true,
 }
 
 func isHandledKey(key string) bool {

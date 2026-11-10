@@ -66,6 +66,26 @@ func (s *Server) registerTools() {
 		Name:        "load_profile",
 		Description: "Load and apply a development profile to an editor. Merges profile settings with the editor's current configuration. Editor: vscode, zed, or cursor.",
 	}, s.handleLoadProfile)
+
+	mcp.AddTool(s.server, &mcp.Tool{
+		Name:        "get_ai_settings",
+		Description: "Read AI-specific settings for an editor. Returns the canonical AI model (inline completion, chat, model, provider) plus raw AI keys. Shows cross-editor mapping table. Editor: vscode, zed, or cursor.",
+	}, s.handleGetAISettings)
+
+	mcp.AddTool(s.server, &mcp.Tool{
+		Name:        "update_ai_settings",
+		Description: "Update AI settings for an editor using the canonical model. Fields: inline_completion (bool), chat_enabled (bool), model (string), provider (string), composer_enabled (bool, Cursor only), prediction_enabled (bool, Cursor only). Editor: vscode, zed, or cursor.",
+	}, s.handleUpdateAISettings)
+
+	mcp.AddTool(s.server, &mcp.Tool{
+		Name:        "get_mcp_config",
+		Description: "Read MCP server configurations for an editor. Returns the list of configured MCP servers with their command, args, URL, transport, and env. Editor: vscode, zed, or cursor.",
+	}, s.handleGetMCPConfig)
+
+	mcp.AddTool(s.server, &mcp.Tool{
+		Name:        "update_mcp_config",
+		Description: "Add or update MCP server configurations for an editor. Provide a list of servers with name, command, args, url, and env. Replaces the full MCP config. Editor: vscode, zed, or cursor.",
+	}, s.handleUpdateMCPConfig)
 }
 
 type DetectEditorsInput struct{}
@@ -296,6 +316,105 @@ func (s *Server) handleLoadProfile(ctx context.Context, _ *mcp.CallToolRequest, 
 		"editor":           input.Editor,
 		"applied_settings": applied,
 		"status":           "applied",
+	}
+
+	data, _ := json.MarshalIndent(result, "", "  ")
+	return textResult(string(data)), noOutput{}, nil
+}
+
+type GetAISettingsInput struct {
+	Editor string `json:"editor"`
+}
+
+func (s *Server) handleGetAISettings(ctx context.Context, _ *mcp.CallToolRequest, input GetAISettingsInput) (*mcp.CallToolResult, noOutput, error) {
+	if s.ai == nil {
+		return textResult("AI settings service not available"), noOutput{}, nil
+	}
+
+	report, err := s.ai.GetAISettings(ctx, domain.EditorID(input.Editor))
+	if err != nil {
+		return textResult(fmt.Sprintf("Error reading AI settings: %v", err)), noOutput{}, nil
+	}
+
+	data, _ := json.MarshalIndent(report, "", "  ")
+	return textResult(string(data)), noOutput{}, nil
+}
+
+type UpdateAISettingsInput struct {
+	Editor            string `json:"editor"`
+	InlineCompletion  bool   `json:"inline_completion"`
+	ChatEnabled       bool   `json:"chat_enabled"`
+	Model             string `json:"model"`
+	Provider          string `json:"provider"`
+	ComposerEnabled   bool   `json:"composer_enabled"`
+	PredictionEnabled bool   `json:"prediction_enabled"`
+}
+
+func (s *Server) handleUpdateAISettings(ctx context.Context, _ *mcp.CallToolRequest, input UpdateAISettingsInput) (*mcp.CallToolResult, noOutput, error) {
+	if s.ai == nil {
+		return textResult("AI settings service not available"), noOutput{}, nil
+	}
+
+	ai := domain.CanonicalAI{
+		InlineCompletion:  input.InlineCompletion,
+		ChatEnabled:       input.ChatEnabled,
+		Model:             input.Model,
+		Provider:          input.Provider,
+		ComposerEnabled:   input.ComposerEnabled,
+		PredictionEnabled: input.PredictionEnabled,
+	}
+
+	applied, err := s.ai.UpdateAISettings(ctx, domain.EditorID(input.Editor), ai)
+	if err != nil {
+		return textResult(fmt.Sprintf("Error updating AI settings: %v", err)), noOutput{}, nil
+	}
+
+	result := map[string]any{
+		"editor":           input.Editor,
+		"applied_settings": applied,
+		"status":           "applied",
+	}
+
+	data, _ := json.MarshalIndent(result, "", "  ")
+	return textResult(string(data)), noOutput{}, nil
+}
+
+type GetMCPConfigInput struct {
+	Editor string `json:"editor"`
+}
+
+func (s *Server) handleGetMCPConfig(ctx context.Context, _ *mcp.CallToolRequest, input GetMCPConfigInput) (*mcp.CallToolResult, noOutput, error) {
+	if s.ai == nil {
+		return textResult("AI settings service not available"), noOutput{}, nil
+	}
+
+	config, err := s.ai.GetMCPConfig(ctx, domain.EditorID(input.Editor))
+	if err != nil {
+		return textResult(fmt.Sprintf("Error reading MCP config: %v", err)), noOutput{}, nil
+	}
+
+	data, _ := json.MarshalIndent(config, "", "  ")
+	return textResult(string(data)), noOutput{}, nil
+}
+
+type UpdateMCPConfigInput struct {
+	Editor  string             `json:"editor"`
+	Servers []domain.MCPServer `json:"servers"`
+}
+
+func (s *Server) handleUpdateMCPConfig(ctx context.Context, _ *mcp.CallToolRequest, input UpdateMCPConfigInput) (*mcp.CallToolResult, noOutput, error) {
+	if s.ai == nil {
+		return textResult("AI settings service not available"), noOutput{}, nil
+	}
+
+	if err := s.ai.UpdateMCPConfig(ctx, domain.EditorID(input.Editor), input.Servers); err != nil {
+		return textResult(fmt.Sprintf("Error updating MCP config: %v", err)), noOutput{}, nil
+	}
+
+	result := map[string]any{
+		"editor":  input.Editor,
+		"servers": len(input.Servers),
+		"status":  "applied",
 	}
 
 	data, _ := json.MarshalIndent(result, "", "  ")

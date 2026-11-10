@@ -31,6 +31,7 @@ type MigrationPlan struct {
 
 type CanonicalSettings struct {
 	Editor     CanonicalEditor              `yaml:"editor" json:"editor"`
+	AI         CanonicalAI                  `yaml:"ai,omitempty" json:"ai,omitempty"`
 	Languages  map[string]CanonicalLanguage `yaml:"languages,omitempty" json:"languages,omitempty"`
 	Theme      string                       `yaml:"theme,omitempty" json:"theme,omitempty"`
 	Extensions []CanonicalExtension         `yaml:"extensions,omitempty" json:"extensions,omitempty"`

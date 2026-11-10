@@ -14,6 +14,7 @@ type Server struct {
 	migration *application.MigrationService
 	docs      *application.DocsService
 	profiles  *application.ProfileService
+	ai        *application.AISettingsService
 }
 
 func NewServer(
@@ -22,6 +23,7 @@ func NewServer(
 	migration *application.MigrationService,
 	docs *application.DocsService,
 	profiles *application.ProfileService,
+	ai *application.AISettingsService,
 ) *Server {
 	s := &Server{
 		settings:  settings,
@@ -29,6 +31,7 @@ func NewServer(
 		migration: migration,
 		docs:      docs,
 		profiles:  profiles,
+		ai:        ai,
 	}
 
 	s.server = mcp.NewServer(

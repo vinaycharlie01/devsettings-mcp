@@ -56,13 +56,20 @@ func main() {
 	}
 	defer store.Close()
 
+	mcpManagers := map[domain.EditorID]ports.MCPConfigManager{
+		domain.VSCode: vscodeAdapter,
+		domain.Zed:    zedAdapter,
+		domain.Cursor: cursorAdapter,
+	}
+
 	backupService := application.NewBackupService(store, editors)
 	settingsService := application.NewSettingsService(editors, backupService)
 	migrationService := application.NewMigrationService(editors, normalizers, backupService, store)
 	docsService := application.NewDocsService(store)
 	profileService := application.NewProfileService(profileDir, editors)
+	aiService := application.NewAISettingsService(editors, normalizers, mcpManagers)
 
-	server := mcpserver.NewServer(settingsService, backupService, migrationService, docsService, profileService)
+	server := mcpserver.NewServer(settingsService, backupService, migrationService, docsService, profileService, aiService)
 
 	if err := server.Run(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "server error: %v\n", err)

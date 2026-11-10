@@ -73,22 +73,69 @@ func (n *Normalizer) ToCanonical(_ context.Context, settings *domain.Settings) (
 		}
 	}
 
-	// Cursor-specific AI settings: tracked but not migrateable
-	cursorKeys := map[string]string{
-		"cursor.tab.enabled":        "Cursor Tab AI autocomplete is Cursor-specific",
-		"cursor.chat.enabled":       "Cursor Chat is Cursor-specific",
-		"cursor.copilot.enabled":    "Cursor Copilot integration is Cursor-specific",
-		"cursor.ai.model":           "Cursor AI model selection is Cursor-specific",
-		"cursor.composer.enabled":   "Cursor Composer is Cursor-specific",
-		"cursor.prediction.enabled": "Cursor prediction is Cursor-specific",
-	}
-	for key, note := range cursorKeys {
-		if v, ok := settings.Data[key]; ok {
+	// AI settings: map to canonical model
+	if v, ok := settings.Data["cursor.tab.enabled"]; ok {
+		if b, ok := v.(bool); ok {
+			canonical.AI.InlineCompletion = b
 			items = append(items, domain.MigrationItem{
-				SourceKey: key, SourceValue: v,
-				Status: domain.Unsupported, Note: note,
+				SourceKey: "cursor.tab.enabled", SourceValue: v,
+				Status: domain.SupportedTransformed,
+				Note:   "Maps to inline completion in target editor",
 			})
 		}
+	}
+
+	if v, ok := settings.Data["cursor.chat.enabled"]; ok {
+		if b, ok := v.(bool); ok {
+			canonical.AI.ChatEnabled = b
+			items = append(items, domain.MigrationItem{
+				SourceKey: "cursor.chat.enabled", SourceValue: v,
+				Status: domain.SupportedTransformed,
+				Note:   "Maps to AI chat in target editor",
+			})
+		}
+	}
+
+	if v, ok := settings.Data["cursor.ai.model"]; ok {
+		if s, ok := v.(string); ok {
+			canonical.AI.Model = s
+			canonical.AI.Provider = "cursor"
+			items = append(items, domain.MigrationItem{
+				SourceKey: "cursor.ai.model", SourceValue: v,
+				Status: domain.PartiallySupported,
+				Note:   "Model name may differ in target editor",
+			})
+		}
+	}
+
+	if v, ok := settings.Data["cursor.composer.enabled"]; ok {
+		if b, ok := v.(bool); ok {
+			canonical.AI.ComposerEnabled = b
+			items = append(items, domain.MigrationItem{
+				SourceKey: "cursor.composer.enabled", SourceValue: v,
+				Status: domain.PartiallySupported,
+				Note:   "Composer is Cursor-specific; no direct equivalent in other editors",
+			})
+		}
+	}
+
+	if v, ok := settings.Data["cursor.prediction.enabled"]; ok {
+		if b, ok := v.(bool); ok {
+			canonical.AI.PredictionEnabled = b
+			items = append(items, domain.MigrationItem{
+				SourceKey: "cursor.prediction.enabled", SourceValue: v,
+				Status: domain.PartiallySupported,
+				Note:   "Prediction is Cursor-specific; no direct equivalent in other editors",
+			})
+		}
+	}
+
+	if v, ok := settings.Data["cursor.copilot.enabled"]; ok {
+		items = append(items, domain.MigrationItem{
+			SourceKey: "cursor.copilot.enabled", SourceValue: v,
+			Status: domain.PartiallySupported,
+			Note:   "Cursor Copilot integration maps to inline completion",
+		})
 	}
 
 	for key, val := range settings.Data {
@@ -131,6 +178,38 @@ func (n *Normalizer) FromCanonical(_ context.Context, canonical *domain.Canonica
 			Status: domain.ManualIntervention,
 			Note:   "Install vscodevim.vim extension for vim support in Cursor",
 		})
+	}
+
+	// AI settings → Cursor
+	if canonical.AI.InlineCompletion {
+		settings["cursor.tab.enabled"] = true
+		items = append(items, domain.MigrationItem{
+			TargetKey: "cursor.tab.enabled", TargetValue: true,
+			Status: domain.SupportedTransformed,
+			Note:   "Inline completion mapped to Cursor Tab",
+		})
+	}
+	if canonical.AI.ChatEnabled {
+		settings["cursor.chat.enabled"] = true
+		items = append(items, domain.MigrationItem{
+			TargetKey: "cursor.chat.enabled", TargetValue: true,
+			Status: domain.SupportedTransformed,
+			Note:   "AI chat mapped to Cursor Chat",
+		})
+	}
+	if canonical.AI.Model != "" {
+		settings["cursor.ai.model"] = canonical.AI.Model
+		items = append(items, domain.MigrationItem{
+			TargetKey: "cursor.ai.model", TargetValue: canonical.AI.Model,
+			Status: domain.PartiallySupported,
+			Note:   "Model name may need manual adjustment for Cursor",
+		})
+	}
+	if canonical.AI.ComposerEnabled {
+		settings["cursor.composer.enabled"] = true
+	}
+	if canonical.AI.PredictionEnabled {
+		settings["cursor.prediction.enabled"] = true
 	}
 
 	return settings, items, nil

@@ -97,14 +97,14 @@ func TestNormalizerToCanonicalCursorSpecific(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	unsupported := 0
+	supported := 0
 	for _, item := range items {
-		if item.Status == domain.Unsupported {
-			unsupported++
+		if item.Status == domain.SupportedTransformed || item.Status == domain.PartiallySupported {
+			supported++
 		}
 	}
-	if unsupported != 4 {
-		t.Errorf("expected 4 unsupported Cursor-specific items, got %d", unsupported)
+	if supported < 4 {
+		t.Errorf("expected at least 4 supported/partially-supported Cursor AI items, got %d", supported)
 	}
 }
 
