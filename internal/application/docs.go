@@ -2,24 +2,20 @@ package application
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/vinaycharlie01/devsettings-mcp/internal/domain"
+	"github.com/vinaycharlie01/devsettings-mcp/internal/ports"
 )
 
 type DocsService struct {
-	cacheDir string
-	index    []domain.DocEntry
+	store ports.Store
+	index []domain.DocEntry
 }
 
-func NewDocsService(dataDir string) *DocsService {
-	svc := &DocsService{
-		cacheDir: filepath.Join(dataDir, "docs-cache"),
-	}
+func NewDocsService(store ports.Store) *DocsService {
+	svc := &DocsService{store: store}
 	svc.index = defaultDocIndex()
 	return svc
 }
@@ -42,18 +38,23 @@ func (s *DocsService) Search(_ context.Context, query string, editorFilter strin
 	return &domain.DocSearchResult{Entries: matches, Query: query}, nil
 }
 
-func (s *DocsService) Fetch(_ context.Context, url string, section string) (*domain.DocEntry, error) {
-	cached, err := s.loadFromCache(url)
-	if err == nil {
-		if section != "" {
-			cached = filterSection(cached, section)
+func (s *DocsService) Fetch(ctx context.Context, url string, section string) (*domain.DocEntry, error) {
+	if s.store != nil {
+		cached, err := s.store.GetCachedDoc(ctx, url)
+		if err == nil {
+			if section != "" {
+				cached = filterSection(cached, section)
+			}
+			return cached, nil
 		}
-		return cached, nil
 	}
 
 	for _, entry := range s.index {
 		if entry.URL == url {
 			result := entry
+			if s.store != nil {
+				s.store.CacheDoc(ctx, &result)
+			}
 			if section != "" {
 				return filterSection(&result, section), nil
 			}
@@ -64,29 +65,11 @@ func (s *DocsService) Fetch(_ context.Context, url string, section string) (*dom
 	return nil, fmt.Errorf("documentation page not found: %s (use search_docs to find available pages)", url)
 }
 
-func (s *DocsService) CacheDoc(entry *domain.DocEntry) error {
-	if err := os.MkdirAll(s.cacheDir, 0o755); err != nil {
-		return err
+func (s *DocsService) CacheDoc(ctx context.Context, entry *domain.DocEntry) error {
+	if s.store == nil {
+		return nil
 	}
-	data, err := json.MarshalIndent(entry, "", "  ")
-	if err != nil {
-		return err
-	}
-	filename := urlToFilename(entry.URL)
-	return os.WriteFile(filepath.Join(s.cacheDir, filename), data, 0o644)
-}
-
-func (s *DocsService) loadFromCache(url string) (*domain.DocEntry, error) {
-	filename := urlToFilename(url)
-	data, err := os.ReadFile(filepath.Join(s.cacheDir, filename))
-	if err != nil {
-		return nil, err
-	}
-	var entry domain.DocEntry
-	if err := json.Unmarshal(data, &entry); err != nil {
-		return nil, err
-	}
-	return &entry, nil
+	return s.store.CacheDoc(ctx, entry)
 }
 
 func matchesEntry(entry domain.DocEntry, query string) bool {
@@ -113,11 +96,6 @@ func filterSection(entry *domain.DocEntry, section string) *domain.DocEntry {
 		}
 	}
 	return &filtered
-}
-
-func urlToFilename(url string) string {
-	r := strings.NewReplacer("/", "_", ":", "_", "?", "_", "#", "_")
-	return r.Replace(url) + ".json"
 }
 
 func defaultDocIndex() []domain.DocEntry {

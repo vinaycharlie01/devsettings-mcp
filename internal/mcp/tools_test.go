@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	gomcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	sqlitestore "github.com/vinaycharlie01/devsettings-mcp/internal/adapters/sqlite"
 	"github.com/vinaycharlie01/devsettings-mcp/internal/application"
 	"github.com/vinaycharlie01/devsettings-mcp/internal/domain"
 	"github.com/vinaycharlie01/devsettings-mcp/internal/ports"
@@ -67,6 +68,12 @@ func (n *testNormalizer) FromCanonical(_ context.Context, c *domain.CanonicalSet
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("creating store: %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+
 	vsc := &testEditor{
 		id: domain.VSCode, name: "VS Code",
 		settings:   map[string]any{"editor.tabSize": float64(4), "editor.formatOnSave": true},
@@ -86,12 +93,11 @@ func newTestServer(t *testing.T) *Server {
 		domain.Zed:    &testNormalizer{},
 	}
 
-	dataDir := t.TempDir()
-	backup := application.NewBackupService(dataDir, editors)
+	backup := application.NewBackupService(store, editors)
 	settings := application.NewSettingsService(editors, backup)
-	migration := application.NewMigrationService(editors, normalizers, backup)
-	docs := application.NewDocsService(dataDir)
-	profiles := application.NewProfileService(dataDir, editors)
+	migration := application.NewMigrationService(editors, normalizers, backup, store)
+	docs := application.NewDocsService(store)
+	profiles := application.NewProfileService(t.TempDir(), editors)
 
 	return NewServer(settings, backup, migration, docs, profiles)
 }

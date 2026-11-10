@@ -6,10 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 
@@ -18,12 +15,12 @@ import (
 )
 
 type BackupService struct {
-	baseDir string
+	store   ports.Store
 	editors map[domain.EditorID]ports.Editor
 }
 
-func NewBackupService(baseDir string, editors map[domain.EditorID]ports.Editor) *BackupService {
-	return &BackupService{baseDir: baseDir, editors: editors}
+func NewBackupService(store ports.Store, editors map[domain.EditorID]ports.Editor) *BackupService {
+	return &BackupService{store: store, editors: editors}
 }
 
 func (s *BackupService) CreateBackup(ctx context.Context, editorID domain.EditorID, label string) (*domain.Backup, error) {
@@ -34,118 +31,51 @@ func (s *BackupService) CreateBackup(ctx context.Context, editorID domain.Editor
 
 	timestamp := time.Now()
 	id := fmt.Sprintf("%s-%s", editorID, timestamp.Format("2006-01-02-150405"))
-	backupDir := filepath.Join(s.baseDir, "backups", id)
 
-	if err := os.MkdirAll(backupDir, 0o755); err != nil {
-		return nil, fmt.Errorf("creating backup directory: %w", err)
-	}
-
-	var files []string
-	checksums := make(map[string]string)
-
-	settings, err := editor.ReadSettings(ctx, domain.ScopeUser)
-	if err == nil && len(settings.Data) > 0 {
-		redacted := RedactSecrets(settings.Data)
-		data, _ := json.MarshalIndent(redacted, "", "  ")
-		settingsFile := "settings.json"
-		if err := os.WriteFile(filepath.Join(backupDir, settingsFile), data, 0o644); err != nil {
-			return nil, fmt.Errorf("writing settings backup: %w", err)
-		}
-		files = append(files, settingsFile)
-		checksums[settingsFile] = checksum(data)
-	}
-
-	extensions, err := editor.ListExtensions(ctx)
-	if err == nil && len(extensions) > 0 {
-		data, _ := json.MarshalIndent(extensions, "", "  ")
-		extFile := "extensions.json"
-		if err := os.WriteFile(filepath.Join(backupDir, extFile), data, 0o644); err != nil {
-			return nil, fmt.Errorf("writing extensions backup: %w", err)
-		}
-		files = append(files, extFile)
-		checksums[extFile] = checksum(data)
-	}
-
-	checksumData, _ := json.MarshalIndent(checksums, "", "  ")
-	os.WriteFile(filepath.Join(backupDir, "checksums.json"), checksumData, 0o644)
-
-	manifest := domain.Backup{
+	backup := &domain.Backup{
 		ID:        id,
 		Editor:    editorID,
 		Label:     label,
 		Timestamp: timestamp,
-		Dir:       backupDir,
-		Files:     files,
 	}
 
-	manifestData, _ := json.MarshalIndent(manifest, "", "  ")
-	os.WriteFile(filepath.Join(backupDir, "manifest.json"), manifestData, 0o644)
+	settings, err := editor.ReadSettings(ctx, domain.ScopeUser)
+	if err == nil && len(settings.Data) > 0 {
+		backup.SettingsData = RedactSecrets(settings.Data)
+	}
 
-	return &manifest, nil
+	extensions, err := editor.ListExtensions(ctx)
+	if err == nil && len(extensions) > 0 {
+		backup.ExtensionsData = extensions
+	}
+
+	data, _ := json.Marshal(backup.SettingsData)
+	backup.Checksum = checksum(data)
+
+	if err := s.store.SaveBackup(ctx, backup); err != nil {
+		return nil, fmt.Errorf("saving backup: %w", err)
+	}
+
+	return backup, nil
 }
 
 func (s *BackupService) ListBackups(ctx context.Context) ([]domain.Backup, error) {
-	backupsDir := filepath.Join(s.baseDir, "backups")
-	entries, err := os.ReadDir(backupsDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("reading backups directory: %w", err)
-	}
-
-	var backups []domain.Backup
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		manifestPath := filepath.Join(backupsDir, entry.Name(), "manifest.json")
-		data, err := os.ReadFile(manifestPath)
-		if err != nil {
-			continue
-		}
-		var backup domain.Backup
-		if err := json.Unmarshal(data, &backup); err != nil {
-			continue
-		}
-		backups = append(backups, backup)
-	}
-
-	sort.Slice(backups, func(i, j int) bool {
-		return backups[i].Timestamp.After(backups[j].Timestamp)
-	})
-
-	return backups, nil
+	return s.store.ListBackups(ctx)
 }
 
 func (s *BackupService) RestoreBackup(ctx context.Context, backupID string, dryRun bool) (*domain.SettingsDiff, error) {
-	backupDir := filepath.Join(s.baseDir, "backups", backupID)
-	manifestPath := filepath.Join(backupDir, "manifest.json")
-
-	manifestData, err := os.ReadFile(manifestPath)
+	backup, err := s.store.GetBackup(ctx, backupID)
 	if err != nil {
-		return nil, fmt.Errorf("reading backup manifest: %w", err)
+		return nil, fmt.Errorf("reading backup: %w", err)
 	}
 
-	var manifest domain.Backup
-	if err := json.Unmarshal(manifestData, &manifest); err != nil {
-		return nil, fmt.Errorf("parsing backup manifest: %w", err)
-	}
-
-	editor, ok := s.editors[manifest.Editor]
+	editor, ok := s.editors[backup.Editor]
 	if !ok {
-		return nil, fmt.Errorf("unsupported editor: %s", manifest.Editor)
+		return nil, fmt.Errorf("unsupported editor: %s", backup.Editor)
 	}
 
-	settingsPath := filepath.Join(backupDir, "settings.json")
-	backupData, err := os.ReadFile(settingsPath)
-	if err != nil {
-		return nil, fmt.Errorf("reading backup settings: %w", err)
-	}
-
-	var backupSettings map[string]any
-	if err := json.Unmarshal(backupData, &backupSettings); err != nil {
-		return nil, fmt.Errorf("parsing backup settings: %w", err)
+	if backup.SettingsData == nil {
+		return nil, fmt.Errorf("backup contains no settings data")
 	}
 
 	current, err := editor.ReadSettings(ctx, domain.ScopeUser)
@@ -153,13 +83,13 @@ func (s *BackupService) RestoreBackup(ctx context.Context, backupID string, dryR
 		return nil, fmt.Errorf("reading current settings: %w", err)
 	}
 
-	diff := ComputeDiff(current.Data, backupSettings)
+	diff := ComputeDiff(current.Data, backup.SettingsData)
 
 	if dryRun {
 		return diff, nil
 	}
 
-	data, err := json.MarshalIndent(backupSettings, "", "  ")
+	data, err := json.MarshalIndent(backup.SettingsData, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("marshaling settings: %w", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	sqlitestore "github.com/vinaycharlie01/devsettings-mcp/internal/adapters/sqlite"
 	"github.com/vinaycharlie01/devsettings-mcp/internal/domain"
 	"github.com/vinaycharlie01/devsettings-mcp/internal/ports"
 )
@@ -56,7 +57,15 @@ func (m *mockNormalizer) FromCanonical(_ context.Context, _ *domain.CanonicalSet
 	return m.fromResult, m.targetItems, nil
 }
 
-func setupMigrationTest() (*MigrationService, *mockEditor, *mockEditor) {
+func setupMigrationTest(t *testing.T) (*MigrationService, *mockEditor, *mockEditor) {
+	t.Helper()
+
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("creating store: %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+
 	source := &mockEditor{
 		id: domain.VSCode, name: "VS Code",
 		settings: map[string]any{
@@ -105,12 +114,12 @@ func setupMigrationTest() (*MigrationService, *mockEditor, *mockEditor) {
 		domain.Zed:    targetNorm,
 	}
 
-	svc := NewMigrationService(editors, normalizers, nil)
+	svc := NewMigrationService(editors, normalizers, nil, store)
 	return svc, source, target
 }
 
 func TestPlanMigration(t *testing.T) {
-	svc, _, _ := setupMigrationTest()
+	svc, _, _ := setupMigrationTest(t)
 	ctx := context.Background()
 
 	plan, err := svc.PlanMigration(ctx, domain.VSCode, domain.Zed)
@@ -133,7 +142,7 @@ func TestPlanMigration(t *testing.T) {
 }
 
 func TestPlanMigrationUnsupportedEditor(t *testing.T) {
-	svc, _, _ := setupMigrationTest()
+	svc, _, _ := setupMigrationTest(t)
 	ctx := context.Background()
 
 	_, err := svc.PlanMigration(ctx, "sublime", domain.Zed)
@@ -143,6 +152,12 @@ func TestPlanMigrationUnsupportedEditor(t *testing.T) {
 }
 
 func TestPlanMigrationMissingNormalizer(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("creating store: %v", err)
+	}
+	defer store.Close()
+
 	source := &mockEditor{id: domain.VSCode, name: "VS Code", settings: map[string]any{}}
 	target := &mockEditor{id: domain.Cursor, name: "Cursor", settings: map[string]any{}}
 
@@ -156,17 +171,17 @@ func TestPlanMigrationMissingNormalizer(t *testing.T) {
 		},
 	}
 
-	svc := NewMigrationService(editors, normalizers, nil)
+	svc := NewMigrationService(editors, normalizers, nil, store)
 	ctx := context.Background()
 
-	_, err := svc.PlanMigration(ctx, domain.VSCode, domain.Cursor)
+	_, err = svc.PlanMigration(ctx, domain.VSCode, domain.Cursor)
 	if err == nil {
 		t.Error("expected error for missing target normalizer")
 	}
 }
 
 func TestExecuteMigration(t *testing.T) {
-	svc, _, target := setupMigrationTest()
+	svc, _, target := setupMigrationTest(t)
 	ctx := context.Background()
 
 	plan, err := svc.PlanMigration(ctx, domain.VSCode, domain.Zed)
@@ -188,7 +203,7 @@ func TestExecuteMigration(t *testing.T) {
 }
 
 func TestExecuteMigrationUnknownPlan(t *testing.T) {
-	svc, _, _ := setupMigrationTest()
+	svc, _, _ := setupMigrationTest(t)
 	ctx := context.Background()
 
 	err := svc.ExecuteMigration(ctx, "nonexistent-plan")

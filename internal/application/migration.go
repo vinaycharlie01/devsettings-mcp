@@ -14,19 +14,20 @@ type MigrationService struct {
 	editors     map[domain.EditorID]ports.Editor
 	normalizers map[domain.EditorID]ports.SettingsNormalizer
 	backup      *BackupService
-	plans       map[string]*domain.MigrationPlan
+	store       ports.Store
 }
 
 func NewMigrationService(
 	editors map[domain.EditorID]ports.Editor,
 	normalizers map[domain.EditorID]ports.SettingsNormalizer,
 	backup *BackupService,
+	store ports.Store,
 ) *MigrationService {
 	return &MigrationService{
 		editors:     editors,
 		normalizers: normalizers,
 		backup:      backup,
-		plans:       make(map[string]*domain.MigrationPlan),
+		store:       store,
 	}
 }
 
@@ -87,14 +88,26 @@ func (s *MigrationService) PlanMigration(ctx context.Context, sourceID, targetID
 		BackupID: backupID,
 	}
 
-	s.plans[planID] = plan
+	if s.store != nil {
+		if err := s.store.SaveMigrationPlan(ctx, plan); err != nil {
+			return nil, fmt.Errorf("saving migration plan: %w", err)
+		}
+	}
+
 	return plan, nil
 }
 
 func (s *MigrationService) ExecuteMigration(ctx context.Context, planID string) error {
-	plan, ok := s.plans[planID]
-	if !ok {
-		return fmt.Errorf("migration plan not found: %s", planID)
+	var plan *domain.MigrationPlan
+
+	if s.store != nil {
+		p, err := s.store.GetMigrationPlan(ctx, planID)
+		if err != nil {
+			return fmt.Errorf("migration plan not found: %s", planID)
+		}
+		plan = p
+	} else {
+		return fmt.Errorf("migration plan not found: %s (no store configured)", planID)
 	}
 
 	sourceEditor, ok := s.editors[plan.Source]

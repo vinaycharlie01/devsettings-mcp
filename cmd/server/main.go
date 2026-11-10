@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/vinaycharlie01/devsettings-mcp/internal/adapters/cursor"
+	"github.com/vinaycharlie01/devsettings-mcp/internal/adapters/sqlite"
 	"github.com/vinaycharlie01/devsettings-mcp/internal/adapters/vscode"
 	"github.com/vinaycharlie01/devsettings-mcp/internal/adapters/zed"
 	"github.com/vinaycharlie01/devsettings-mcp/internal/application"
@@ -29,7 +30,6 @@ func main() {
 
 	workspaceDir, _ := os.Getwd()
 
-	// Editor adapters
 	vscodeAdapter := vscode.New(homeDir, workspaceDir)
 	zedAdapter := zed.New(homeDir, workspaceDir)
 	cursorAdapter := cursor.New(homeDir, workspaceDir)
@@ -46,18 +46,22 @@ func main() {
 		domain.Cursor: cursor.NewNormalizer(),
 	}
 
-	// Data directory for backups, profiles, and docs cache
 	dataDir := filepath.Join(homeDir, ".devsettings")
 	profileDir := filepath.Join(workspaceDir, "profiles")
 
-	// Application services
-	backupService := application.NewBackupService(dataDir, editors)
+	store, err := sqlite.New(dataDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error opening database: %v\n", err)
+		os.Exit(1)
+	}
+	defer store.Close()
+
+	backupService := application.NewBackupService(store, editors)
 	settingsService := application.NewSettingsService(editors, backupService)
-	migrationService := application.NewMigrationService(editors, normalizers, backupService)
-	docsService := application.NewDocsService(dataDir)
+	migrationService := application.NewMigrationService(editors, normalizers, backupService, store)
+	docsService := application.NewDocsService(store)
 	profileService := application.NewProfileService(profileDir, editors)
 
-	// MCP server
 	server := mcpserver.NewServer(settingsService, backupService, migrationService, docsService, profileService)
 
 	if err := server.Run(ctx); err != nil {

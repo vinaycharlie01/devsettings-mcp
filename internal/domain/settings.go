@@ -37,10 +37,11 @@ type SettingsDiff struct {
 }
 
 type Backup struct {
-	ID        string    `json:"id"`
-	Editor    EditorID  `json:"editor"`
-	Label     string    `json:"label,omitempty"`
-	Timestamp time.Time `json:"timestamp"`
-	Dir       string    `json:"dir"`
-	Files     []string  `json:"files"`
+	ID             string         `json:"id"`
+	Editor         EditorID       `json:"editor"`
+	Label          string         `json:"label,omitempty"`
+	Timestamp      time.Time      `json:"timestamp"`
+	SettingsData   map[string]any `json:"settings_data,omitempty"`
+	ExtensionsData []Extension    `json:"extensions_data,omitempty"`
+	Checksum       string         `json:"checksum,omitempty"`
 }
