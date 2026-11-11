@@ -1,0 +1,21 @@
+name: web-frontend
+description: Web frontend development environment
+
+languages:
+  typescript:
+    lsp: typescript-language-server
+    formatter: prettier
+  javascript:
+    lsp: typescript-language-server
+    formatter: prettier
+  css:
+    formatter: prettier
+
+extensions:
+  - html
+  - tailwindcss
+  - eslint
+
+settings:
+  format_on_save: true
+  tab_size: 2

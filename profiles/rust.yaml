@@ -1,0 +1,16 @@
+name: rust
+description: Rust development environment
+
+languages:
+  rust:
+    lsp: rust-analyzer
+    formatter: rustfmt
+    debugger: lldb
+
+extensions:
+  - toml
+  - yaml
+
+settings:
+  format_on_save: true
+  tab_size: 4

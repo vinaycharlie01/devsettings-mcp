@@ -1,0 +1,17 @@
+name: go-backend
+description: Go backend development environment
+
+languages:
+  go:
+    lsp: gopls
+    formatter: gofumpt
+    debugger: delve
+
+extensions:
+  - docker
+  - yaml
+  - toml
+
+settings:
+  format_on_save: true
+  tab_size: 4
